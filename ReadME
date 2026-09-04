@@ -1,0 +1,97 @@
+# SOC Home Lab - Wazuh on Apple Silicon
+
+## About this project
+
+I'm a cybersecurity student, and I wanted real hands-on experience with a SIEM instead of just reading about how one works. So I built one. A full Wazuh deployment, running on my own hardware, monitoring my own laptop.
+
+I picked Apple Silicon knowing it would make things harder. Most Wazuh tutorials and forum posts assume x86 hardware, so getting the ARM64 build running meant a lot more trial and error than following a script. Package availability, VM resource tuning, and (you'll see this below) an actual production-style incident that no guide warned me about.
+
+## Stack
+
+| Component | Details |
+|---|---|
+| Hypervisor | UTM (QEMU) on Apple Silicon (M4) |
+| Guest OS | Ubuntu Server 24.04.4 LTS (ARM64) |
+| SIEM | Wazuh, indexer, manager, and dashboard |
+| Monitored endpoint | My MacBook, Wazuh agent v4.14.7 |
+| Storage | LVM-managed disk |
+
+## What it monitors
+
+- **File Integrity Monitoring**: catches file changes in real time and maps each event to the compliance controls it satisfies (GDPR, HIPAA, PCI-DSS, NIST 800-53)
+- **Vulnerability Detection**: scans installed software for known CVEs
+- **MITRE ATT&CK mapping**: tags alerts with actual technique IDs, not just tactic names
+- **Agent health**: connection status, OS fingerprinting, version tracking
+
+## Walkthrough
+
+**1. Deploying the agent**
+
+Wazuh's dashboard walks you through generating the install command for your target OS and pointing it back at the manager. Here's the config screen for the macOS agent.
+
+![Deploy new agent](screenshots/01-deploy-agent.png)
+
+**2. Confirming the endpoint is connected**
+
+Once the agent's running, it shows up active with the correct OS fingerprint and cluster assignment.
+
+![Endpoint status](screenshots/02-endpoint-status.png)
+
+**3. Vulnerability scanning**
+
+This one actually surprised me. 440 critical and 1,779 high-severity CVEs across software already installed on my own laptop. Knowing attack surface exists in theory is one thing. Seeing the real number on a machine I thought I kept updated is a different kind of lesson.
+
+![Vulnerability detection](screenshots/03-vulnerability-detection.png)
+
+**4. File Integrity Monitoring in action**
+
+I wrote a test file on purpose to trigger this. What I didn't expect was how much detail comes with a single event. This one alert maps to four separate compliance frameworks at once.
+
+![FIM event detail](screenshots/04-fim-detail.png)
+
+**5. MITRE ATT&CK, by technique ID**
+
+This is the view I'm most proud of. "Password Guessing" as a label is fine, but `T1110.001` tied to an actual alert count means a lot more to a security team. Next to it you can see `T1078` (Valid Accounts, 22 hits) and `T1548.003` (Sudo and Sudo Caching, 6 hits), with tactic totals underneath.
+
+![MITRE ATT&CK framework](screenshots/05-mitre-attack.png)
+
+## When it broke
+
+Midway through this build, my 30GB virtual disk filled up completely and crashed `wazuh-indexer`. I'm including this part because fixing it taught me more than getting the stack running in the first place did.
+
+**What happened**
+
+`/var/ossec/queue/vd`, Wazuh's vulnerability detection database, had grown to around 9GB. That, plus repeated service restarts while I was still tuning the config, filled the disk and took the indexer down with it.
+
+**What made it confusing**
+
+Even after clearing space and rebooting, `df` still showed the disk at 100%. Turned out the crashed processes were still holding file handles open, so the space that should have been freed wasn't actually released.
+
+**How I fixed it**
+
+1. Bumped the VM's virtual disk size up in UTM
+2. Grew the partition and LVM volume to actually claim that new space:
+   ```bash
+   sudo growpart /dev/vda 3
+   sudo pvresize /dev/vda3
+   sudo lvextend -l +100%FREE /dev/mapper/ubuntu--vg-ubuntu--lv
+   sudo resize2fs /dev/mapper/ubuntu--vg-ubuntu--lv
+   ```
+3. Restarted `wazuh-indexer` and `wazuh-dashboard` and confirmed both came back clean
+4. Checked that the dashboard was reachable and my agent was still reporting in
+
+Disk usage dropped from 95.7% to about 50% right away, and down to 35% after a full VM shutdown and restart. A plain reboot wasn't enough. QEMU only picks up a new virtual disk size on a cold start, and figuring that out cost me a confused half hour.
+
+![Disk usage after recovery](screenshots/06-disk-recovery.png)
+
+**What I took from it**
+
+The vulnerability database is exactly the kind of thing that grows quietly in the background until it takes your whole system down with it, and none of the standard install docs mention it. I keep an eye on it now, and I only know to because I hit this.
+
+## What's next
+
+- Adding more endpoints so this isn't just monitoring one machine
+- Running simulated attacks, probably with Atomic Red Team, to generate a wider spread of ATT&CK mapped activity
+- Setting up basic alerting on disk and service health so I catch the next version of this before it takes anything down
+
+This is still an active project. I'm treating the rough edges as part of the story, not something to hide.
