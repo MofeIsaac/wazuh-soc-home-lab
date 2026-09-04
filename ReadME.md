@@ -2,9 +2,9 @@
 
 ## About this project
 
-I'm a cybersecurity student, and I wanted real hands-on experience with a SIEM instead of just reading about how one works. So I built one. A full Wazuh deployment, running on my own hardware, monitoring my own laptop.
+I'm a cybersecurity student, and I wanted real hands-on experience with a SIEM instead of just reading about how one works. So I built a full Wazuh deployment, running on my own hardware, monitoring my own laptop.
 
-I picked Apple Silicon knowing it would make things harder. Most Wazuh tutorials and forum posts assume x86 hardware, so getting the ARM64 build running meant a lot more trial and error than following a script. Package availability, VM resource tuning, and (you'll see this below) an actual production-style incident that no guide warned me about.
+I picked Apple Silicon because I knew it would make things harder. Most Wazuh tutorials and forum posts assume x86 hardware, so getting the ARM64 build running meant a lot more trial and error than following a script. Package availability, VM resource tuning, and (you'll see this below) an actual production-style incident that no guide warned me about.
 
 ## Stack
 
@@ -33,7 +33,7 @@ Wazuh's dashboard walks you through generating the install command for your targ
 
 **2. Confirming the endpoint is connected**
 
-Once the agent's running, it shows up active with the correct OS fingerprint and cluster assignment.
+Once the agent's running, it shows up as active with the correct OS fingerprint and cluster assignment.
 
 ![Endpoint status](screenshots/02-endpoint-status.png)
 
